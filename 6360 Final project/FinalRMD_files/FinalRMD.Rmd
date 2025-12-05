@@ -23,9 +23,10 @@ library(lubridate)
 
 In Nueces and Mission Aransas Bays, it is unknown where are the best spots for the highest CPUE of juvenile Bull sharks. This is needed to begin the first chapter of my dissertation in understanding fine scale behaviors of juvenile bull sharks on the Texas Coast. The data I am analyzing gives insight into catch data across 1975-2022 in Corpus Christi and Aransas Bays. By tidying and sorting the data, we can we what factors and locations change the chances of catching bull sharks using a gill net. 
 
+## Research Questions: 1. Where are hotspots for YOY and juvenile bull shark abundance in Nueces and Mission-Aransas Estuaries? 2. How do environmental conditions change presence/absence of this species?
+
 
 ```{r Tidying}
-# view working directory
 getwd()
 
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
@@ -40,9 +41,7 @@ bullength <- read_csv("C:/Users/Cali/Downloads/TPWD gill net lengths.csv")
 TPWDgill
 
 #The data is very messy and has a lot of data over the course of 52 years. We can eliminate some columns in the dataset to clean up the data and focus it on what we're looking for (ie. bull shark Catch Per Unit Effort).
-
 ####TIDY####
-
 view(TPWDgill)
 
 
@@ -51,24 +50,16 @@ view(TPWDgill)
 bullsfull <- TPWDgill[c("MAJOR_AREA_CODE","MINOR_AREA_CODE","STATION_CODE","COMPLETION_DTTM","X","Y","START_TEMPERATURE_NUM","START_SALINITY_NUM",
                         "START_TURBIDITY_NUM","START_DISSOLVED_OXYGEN_NUM", "start_shallow_water_depth_num","start_deep_water_depth_num", "ELAPSED_TIME", "SEASON", "Bull_shark")]
 
-bullsfull
-
 #There are a lot of 0's in the dataset, which is fine, but it would lessen the dataset if I started the count at 1 instead of zero
-
 bullnozero <- filter(bullsfull, Bull_shark > 0)
-bullnozero
 
 #double check that it did delete the zeros and visualize the data 
-
 view(bullnozero)
 
 #Filter for area code: Nueces = 260
-
 Nueces <- bullnozero %>%
   filter(MINOR_AREA_CODE == 260)
 
-Nueces
-
 # uncount sharks into individual rows
 Nueces <- Nueces %>%
   uncount(weights = Bull_shark)
@@ -77,13 +68,10 @@ Nueces <- Nueces %>%
 Nueces <- Nueces %>%
   mutate(Species_Name = "Bull_shark",
          Species_code = 755)
-Nueces
 
 #Aransas Data
 Aransas <- bullnozero %>%
-  filter(MINOR_AREA_CODE == 370)
-
-Aransas
+  filter(MAJOR_AREA_CODE == 5)
 
 # uncount sharks into individual rows
 Aransas <- Aransas %>%
@@ -93,7 +81,19 @@ Aransas <- Aransas %>%
 Aransas <- Aransas %>%
   mutate(Species_Name = "Bull_shark",
          Species_code = 755)
-Aransas
+
+#Corpus Christi Bay 
+Corpus <- bullnozero %>%
+  filter(MAJOR_AREA_CODE == 6)
+
+# uncount sharks into individual rows
+Corpus <- Corpus %>%
+  uncount(weights = Bull_shark)
+
+# Add Species_Name and Species_code columns
+Corpus <- Corpus %>%
+  mutate(Species_Name = "Bull_shark",
+         Species_code = 755)
 ```
 
 ## Including Plots
@@ -132,8 +132,6 @@ dat$TIME  <- format(dat$COMPLETION_DTTM, "%H:%M:%S")
 
 dat <- dat %>% arrange(YEAR)
 
-view(dat)
-
 bullabundance <- ggplot(dat, aes(x = COMPLETION_DTTM, y = Bull_shark)) + geom_point() + geom_smooth(method = "lm", se = FALSE) + theme_classic() + labs(title = "Shark abundance over time")
 
 bullabundance
@@ -169,7 +167,7 @@ bullnueces <- ggplot(Nueces, aes(x = COMPLETION_DTTM, y = Bull_shark)) +
 bullnueces
 
 Aransas <- bullnozero %>%
-  filter(MINOR_AREA_CODE == 370)
+  filter(MAJOR_AREA_CODE == 5)
 
 Aransas$COMPLETION_DTTM <- dmy_hms(Aransas$COMPLETION_DTTM)
 
@@ -190,6 +188,28 @@ pval <- summary(m)$coefficients[2,4]
 bullaransas <- ggplot(Aransas, aes(x = COMPLETION_DTTM, y = Bull_shark)) + geom_point() + geom_smooth(method = "lm", se = FALSE) + theme_classic() + labs(title = "Shark abundance Aransas over time") + annotate("text", x = Inf, y = Inf, label = paste0("p = ", signif(pval, 3)), hjust = 1.5, vjust = 1)
 
 bullaransas
+
+corpus <- bullnozero %>%
+  filter(MAJOR_AREA_CODE == 6)
+
+corpus$COMPLETION_DTTM <- dmy_hms(corpus$COMPLETION_DTTM)
+
+# Create separate columns
+corpus$YEAR  <- year(corpus$COMPLETION_DTTM)
+corpus$MONTH <- month(corpus$COMPLETION_DTTM)
+corpus$DAY   <- day(corpus$COMPLETION_DTTM)
+corpus$TIME  <- format(corpus$COMPLETION_DTTM, "%H:%M:%S")
+
+#Arrange dataset by year
+
+corpus <- corpus %>% arrange(YEAR)
+
+m <- lm(Bull_shark ~ COMPLETION_DTTM, data = Aransas)
+pval <- summary(m)$coefficients[2,4]
+
+bullcorpus <- ggplot(corpus, aes(x = COMPLETION_DTTM, y = Bull_shark)) + geom_point() + geom_smooth(method = "lm", se = FALSE) + theme_classic() + labs(title = "Shark abundance Corpus Christi Bay over time") + annotate("text", x = Inf, y = Inf, label = paste0("p = ", signif(pval, 3)), hjust = 1.5, vjust = 1)
+
+bullcorpus
 
 ####How do environmental conditions effect presence or absence of bull sharks? ####
 
@@ -237,33 +257,99 @@ Stationplot
 library(tigris)
 library(sf)
 library(ggthemes)
-library(rnaturalearth)
-library(rnaturalearthdata)
+library(leaflet.extras)
 
-options(tigris_use_cache = TRUE)
+nuecesmap <- leaflet(Nueces) %>%
+  addTiles() %>%
+  addHeatmap(
+    lng = ~X,
+    lat = ~Y,
+    intensity = ~Bull_shark * 50,   # weights the heat by # of sharks
+    blur = 1,                 # smoothing
+    max = max(Nueces$Bull_shark, na.rm = TRUE),
+radius = 15) %>% 
+  addLegend("bottomright",
+    colors = "red",
+    labels = "Higher intensity = More Bull Sharks",
+    title = "Bull Shark Heat Map")
 
+nuecesmap
 
-coast <- ne_coastline(scale = "medium", returnclass = "sf")
+#Aransas Map
+Aransas <- bullnozero %>%
+  filter(MAJOR_AREA_CODE == 5)
 
-nuecesonmap <- counties(state = "TX", cb = TRUE) %>%
-  filter(NAME == "Nueces") %>%
-  st_as_sf()
+aransasmap <- leaflet(Aransas) %>%
+  addTiles() %>%
+  addHeatmap(
+    lng = ~X,
+    lat = ~Y,
+    intensity = ~Bull_shark * 50,   # weights the heat by # of sharks
+    blur = 1,                 # smoothing
+    max = max(Aransas$Bull_shark, na.rm = TRUE),
+    radius = 15) %>% 
+  addLegend("bottomright",
+            colors = "red",
+            labels = "Higher intensity = More Bull Sharks",
+            title = "Bull Shark Heat Map") 
 
-bullcoord <- st_as_sf(nuecesonmap,
-                   coords = c("X", "Y"),
-                   crs = 4326,
-                   remove = "FALSE")
-bullcoord
+aransasmap
 
-#mapping it 
-range(Nueces$X)
-range(Nueces$Y)
+#Copano Map 
+Copano <- bullnozero %>%
+  filter(MINOR_AREA_CODE == 120)
 
-ggplot(Nueces, aes(x = X, y = Y)) +
-  geom_point(alpha = 0.6) +
-  stat_density2d(aes(fill = ..level..), geom = "polygon", alpha = 0.4) +
-  theme_bw() +
-  coord_equal()
+copanomap <- leaflet(Copano) %>%
+  addTiles() %>%
+  addHeatmap(
+    lng = ~X,
+    lat = ~Y,
+    intensity = ~Bull_shark * 50,   # weights the heat by # of sharks
+    blur = 1,                 # smoothing
+    max = max(Copano$Bull_shark, na.rm = TRUE),
+    radius = 15) %>% 
+  addLegend("bottomright",
+            colors = "red",
+            labels = "Higher intensity = More Bull Sharks",
+            title = "Bull Shark Heat Map") 
+
+copanomap
+
+#Corpus map
+Corpus <- bullnozero %>%
+  filter(MAJOR_AREA_CODE == 6)
+
+corpusmap <- leaflet(Corpus) %>%
+  addTiles() %>%
+  addHeatmap(
+    lng = ~X,
+    lat = ~Y,
+    intensity = ~Bull_shark * 50,   # weights the heat by # of sharks
+    blur = 1,                 # smoothing
+    max = max(Corpus$Bull_shark, na.rm = TRUE),
+    radius = 15) %>% 
+  addLegend("bottomright",
+            colors = "red",
+            labels = "Higher intensity = More Bull Sharks",
+            title = "Bull Shark Heat Map") 
+
+corpusmap
+
+#Looking at Salinity
+corpussalinity <- leaflet(Corpus) %>%
+  addTiles() %>%
+  addHeatmap(
+    lng = ~X,
+    lat = ~Y,
+    intensity = ~START_SALINITY_NUM * 10,   # weights the heat by salinity
+    blur = 1,                 
+    max = max(Corpus$START_SALINITY_NUM, na.rm = TRUE),
+    radius = 15) %>% 
+  addLegend("bottomright",
+            colors = "red",
+            labels = "Higher intensity = Higher Salinity",
+            title = "Salinity Heat Map")
+corpussalinity
 
 ```
 
