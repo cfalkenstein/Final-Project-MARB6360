@@ -1,0 +1,263 @@
+library(tidyverse)
+library(readr)
+library(rstudioapi)
+library(janitor)
+library(ggplot2)
+library(maps)
+library(leaflet)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+
+# view working directory
+getwd()
+
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+getwd()
+
+#Import Dataset
+TPWDgill <- read_csv("C:/Users/Cali/Downloads/TPWD gill net catch.csv")
+
+bullength <- read_csv("C:/Users/Cali/Downloads/TPWD gill net lengths.csv")
+
+# A tibble is created of the data
+TPWDgill
+
+#The data is very messy and has a lot of data over the course of 52 years. We can eliminate some columns in the dataset to clean up the data and focus it on what we're looking for (ie. bull shark Catch Per Unit Effort).
+
+####TIDY####
+
+view(TPWDgill)
+
+
+#Keep all environmental factors and location, but need to take out all of the other species that we aren't looking at. 
+
+bullsfull <- TPWDgill[c("MAJOR_AREA_CODE","MINOR_AREA_CODE","STATION_CODE","COMPLETION_DTTM","X","Y","START_TEMPERATURE_NUM","START_SALINITY_NUM",
+                        "START_TURBIDITY_NUM","START_DISSOLVED_OXYGEN_NUM", "start_shallow_water_depth_num","start_deep_water_depth_num", "ELAPSED_TIME", "SEASON", "Bull_shark")]
+
+bullsfull
+
+#There are a lot of 0's in the dataset, which is fine, but it would lessen the dataset if I started the count at 1 instead of zero
+
+bullnozero <- filter(bullsfull, Bull_shark > 0)
+bullnozero
+
+#double check that it did delete the zeros and visualize the data 
+
+view(bullnozero)
+
+#Filter for area code: Nueces = 260
+
+Nueces <- bullnozero %>%
+  filter(MINOR_AREA_CODE == 260)
+
+Nueces
+
+# uncount sharks into individual rows
+Nueces <- Nueces %>%
+  uncount(weights = Bull_shark)
+
+# Add Species_Name and Species_code columns
+Nueces <- Nueces %>%
+  mutate(Species_Name = "Bull_shark",
+         Species_code = 755)
+Nueces
+
+#Aransas Data
+Aransas <- bullnozero %>%
+  filter(MINOR_AREA_CODE == 370)
+
+Aransas
+
+# uncount sharks into individual rows
+Aransas <- Aransas %>%
+  uncount(weights = Bull_shark)
+
+# Add Species_Name and Species_code columns
+Aransas <- Aransas %>%
+  mutate(Species_Name = "Bull_shark",
+         Species_code = 755)
+Aransas
+
+####Study Questions ####
+
+#1. How many catches per station in Nueces?
+
+Stationnueces <- Nueces %>%
+  count(STATION_CODE, name = "Num_Captures") %>%
+  arrange(desc(Num_Captures))
+
+Stationnueces
+
+ggplot(Stationnueces, aes(x = STATION_CODE, y = Num_Captures)) + geom_bar(stat = "identity") + theme_bw() + labs(title = "Number of Captures Nueces' Stations")
+
+
+#### How has the trend of bull shark presence changed over time? ####
+# Split the completion column into Date, time, and year
+
+dat <- read.csv("C:/Users/Cali/Downloads/TPWD gill net catch.csv", stringsAsFactors = FALSE)
+
+# Parse day-month-year hour:minute:second
+dat$COMPLETION_DTTM <- dmy_hms(dat$COMPLETION_DTTM)
+
+# Create separate columns
+dat$YEAR  <- year(dat$COMPLETION_DTTM)
+dat$MONTH <- month(dat$COMPLETION_DTTM)
+dat$DAY   <- day(dat$COMPLETION_DTTM)
+dat$TIME  <- format(dat$COMPLETION_DTTM, "%H:%M:%S")
+
+#Arrange dataset by year
+
+dat <- dat %>% arrange(YEAR)
+
+view(dat)
+
+bullabundance <- ggplot(dat, aes(x = COMPLETION_DTTM, y = Bull_shark)) + geom_point() + geom_smooth(method = "lm", se = FALSE) + theme_classic() + labs(title = "Shark abundance over time")
+
+bullabundance
+
+#Now measure abundance in Nueces and Aransas Counties
+Nueces <- bullnozero %>%
+  filter(MINOR_AREA_CODE == 260)
+
+Nueces$COMPLETION_DTTM <- dmy_hms(Nueces$COMPLETION_DTTM)
+
+# Create separate columns
+Nueces$YEAR  <- year(Nueces$COMPLETION_DTTM)
+Nueces$MONTH <- month(Nueces$COMPLETION_DTTM)
+Nueces$DAY   <- day(Nueces$COMPLETION_DTTM)
+Nueces$TIME  <- format(Nueces$COMPLETION_DTTM, "%H:%M:%S")
+
+#Arrange dataset by year
+
+Nueces <- Nueces %>% arrange(YEAR)
+
+#add p-value 
+m <- lm(Bull_shark ~ COMPLETION_DTTM, data = Nueces)
+pval <- summary(m)$coefficients[2,4]
+
+bullnueces <- ggplot(Nueces, aes(x = COMPLETION_DTTM, y = Bull_shark)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  annotate("text", x = Inf, y = Inf, label = paste0("p = ", signif(pval, 3)),
+           hjust = 1.5, vjust = 1) +
+  theme_classic() +
+  labs(title = "Shark abundance Nueces over time")
+
+bullnueces
+
+Aransas <- bullnozero %>%
+  filter(MINOR_AREA_CODE == 370)
+
+Aransas$COMPLETION_DTTM <- dmy_hms(Aransas$COMPLETION_DTTM)
+
+# Create separate columns
+Aransas$YEAR  <- year(Aransas$COMPLETION_DTTM)
+Aransas$MONTH <- month(Aransas$COMPLETION_DTTM)
+Aransas$DAY   <- day(Aransas$COMPLETION_DTTM)
+Aransas$TIME  <- format(Aransas$COMPLETION_DTTM, "%H:%M:%S")
+
+#Arrange dataset by year
+
+Aransas <- Aransas %>% arrange(YEAR)
+
+m <- lm(Bull_shark ~ COMPLETION_DTTM, data = Aransas)
+pval <- summary(m)$coefficients[2,4]
+
+
+bullaransas <- ggplot(Aransas, aes(x = COMPLETION_DTTM, y = Bull_shark)) + geom_point() + geom_smooth(method = "lm", se = FALSE) + theme_classic() + labs(title = "Shark abundance Aransas over time") + annotate("text", x = Inf, y = Inf, label = paste0("p = ", signif(pval, 3)), hjust = 1.5, vjust = 1)
+
+bullaransas
+
+####How do environmental conditions effect presence or absence of bull sharks? ####
+
+#How does salinity change CPUE of bull sharks?
+
+salinty <- ggplot(bullnozero, aes(x = START_SALINITY_NUM, y = Bull_shark)) + geom_line(aes(color = SEASON)) + labs(title = "Shark CPUE based on Salinity")
+
+salinty
+
+#How does temperature change CPUE of bull sharks?
+
+tempbull <- ggplot(bullnozero, aes(x = START_TEMPERATURE_NUM, y = Bull_shark)) + geom_line(aes(color = SEASON)) + labs(title = "Shark CPUE based on Temperature")
+
+tempbull
+
+#How does Season effect presence or absence of bull sharks?
+
+seasonplot <- ggplot(Nueces, aes(x = SEASON, y = Bull_shark)) + geom_bar(stat = "identity") + theme_classic() 
+
+seasonplot
+
+#Does gillnet soak time effect abundance?
+
+soaktime <- ggplot(Nueces, aes(x = ELAPSED_TIME, y = Bull_shark)) + geom_point() + theme_classic()
+
+soaktime
+
+####Looking at Station Location on a map ####
+#Abundance Per Station
+
+Station.counts <- Nueces %>%
+  count(STATION_CODE, name = "Num_Captures") %>%
+  arrange(desc(Num_Captures))
+
+Station.counts
+
+#View on bar plot 
+
+Stationplot <- ggplot(Nueces, aes(x = STATION_CODE, y = Bull_shark)) + geom_bar(stat = "identity") + theme_classic() + labs(title = "Station Abundance") 
+
+Stationplot
+
+#What does this look like on a map?
+
+library(tigris)
+library(sf)
+library(ggthemes)
+library(rnaturalearth)
+library(rnaturalearthdata)
+
+options(tigris_use_cache = TRUE)
+
+
+coast <- ne_coastline(scale = "medium", returnclass = "sf")
+
+nuecesonmap <- counties(state = "TX", cb = TRUE) %>%
+  filter(NAME == "Nueces") %>%
+  st_as_sf()
+
+bullcoord <- st_as_sf(nuecesonmap,
+                   coords = c("X", "Y"),
+                   crs = 4326,
+                   remove = "FALSE")
+bullcoord
+
+#mapping it 
+range(Nueces$X)
+range(Nueces$Y)
+
+ggplot(Nueces, aes(x = X, y = Y)) +
+  geom_point(alpha = 0.6) +
+  stat_density2d(aes(fill = ..level..), geom = "polygon", alpha = 0.4) +
+  theme_bw() +
+  coord_equal()
+
+ggplot() +
+  geom_sf(data = coast_crop, fill = "gray90", color = "black") +
+  stat_density_2d(
+    data = Nueces,
+    aes(x = X, y = Y, fill = after_stat(level)),
+    geom = "polygon",
+    alpha = 0.7,
+    contour = TRUE
+  ) +
+  scale_fill_viridis_c(option = "plasma") +
+  geom_point(data = Nueces, aes(x = X, y = Y), size = 1, alpha = 0.4) +
+  coord_sf() +
+  theme_bw() +
+  labs(title = "Bull Shark Hotspots – Corpus Christi Bay",
+       fill = "Density")
+
+
+
